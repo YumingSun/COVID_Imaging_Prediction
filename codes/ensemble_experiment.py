@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-Created on Sat Aug 13 15:36:53 2022
+Created on Sat Aug 13 16:16:14 2022
 
 @author: sunym
 """
 import numpy as np
 from sksurv.metrics import integrated_brier_score
-from sklearn.model_selection import GridSearchCV, KFold
-from sklearn.preprocessing import StandardScaler
 import pickle
 import pandas as pd
 import os
@@ -18,13 +16,16 @@ from sksurv.metrics import (
     cumulative_dynamic_auc,
     integrated_brier_score,
 )
-from sksurv.ensemble import RandomSurvivalForest
 from preprocess import clinic_preprocess,image_clinic_preprocess_model_fitting
+from ensemble_averaging import Ensemble
 
 def evaluate_performance(allData, trainTestId, selectedClinic,
                          selectedImageClinic,
                          imageNameAll,clinicNameAll,
-                         transform,clinicParam, clinicImageParam):
+                         transform,
+                         bestClinicSvmParam,bestClinicRsfParam,bestClinicGbParam,
+                         bestClinicImageSvmParam,bestClinicImageRsfParam,
+                         bestClinicImageGbParam):
     '''
     Parameters
     ----------
@@ -36,16 +37,19 @@ def evaluate_performance(allData, trainTestId, selectedClinic,
     imageNameAll : List
     clinicNameAll : List
     transform : String
-    clinicParam : Dict
-    clinicImageParam : Dict
+    bestClinicSvmParam: Dict
+    bestClinicRsfParam: Dict 
+    bestClinicGbParam: Dict
+    bestClinicImageSvmParam: Dict 
+    bestClinicImageRsfParam: Dict
+    bestClinicImageGbParam: Dict
 
     Returns
     -------
     dict
-        ictionary of C-index for training and testing dataset
+        Dictionary of C-index for training and testing dataset
 
     '''
-
     trainId = trainTestId['TrainId']
     testId = trainTestId['TestId']
     
@@ -75,20 +79,23 @@ def evaluate_performance(allData, trainTestId, selectedClinic,
                                          formats = 'bool, f8')
     outcomeTest = np.core.records.fromarrays(outcomeTest.to_numpy().transpose(),names='Status, Survival_in_days',
                                          formats = 'bool, f8')
+    clinicImageEn = Ensemble(svmParam = bestClinicImageSvmParam,
+                             rsfParam = bestClinicImageRsfParam,
+                             gbParam = bestClinicImageGbParam).fit(trainClinicImage,
+                                                                      outcomeTrain)
+    clinicEn= Ensemble(svmParam = bestClinicSvmParam, 
+                       rsfParam = bestClinicRsfParam,
+                       gbParam = bestClinicGbParam).fit(trainClinic,
+                                                        outcomeTrain)
     
-    clinicImageRsf = RandomSurvivalForest(**clinicImageParam).fit(trainClinicImage,
-                                                                             outcomeTrain)
-    clinicRsf = RandomSurvivalForest(**clinicParam).fit(trainClinic,
-                                                                             outcomeTrain)
-
-    clinicResTrain = clinicRsf.score(trainClinic,outcomeTrain)
-    clinicResTest = clinicRsf.score(testClinic,outcomeTest)
-
-    clinicImageResTrain = clinicImageRsf.score(trainClinicImage,
+    clinicResTrain = clinicEn.score(trainClinic,outcomeTrain)
+    clinicResTest = clinicEn.score(testClinic,outcomeTest)
+    
+    clinicImageResTrain = clinicImageEn.score(trainClinicImage,
                                                outcomeTrain)
-    clinicImageResTest = clinicImageRsf.score(testClinicImage,
+    clinicImageResTest = clinicImageEn.score(testClinicImage,
                                               outcomeTest)
-        
+    
     return {'Clinic Train': clinicResTrain, 'Clinic Test': clinicResTest,
             'Clinic Image Train': clinicImageResTrain, 
             'Clinic Image Test': clinicImageResTest
@@ -123,23 +130,41 @@ if __name__ == '__main__':
 
     selectedClinic = [f for f in selectedImageClinic if f in clinicNamesAll]
     
-    bestClinicParam = pickle.load(open(
+    bestClinicSvmParam = pickle.load(open(
+        os.path.join(paramPath,
+                     'clinicParamSvm_{:02d}.pkl'.format(numOfExp)),
+        'rb'))
+    bestClinicImageSvmParam = pickle.load(open(
+        os.path.join(paramPath,
+                     'clinicImageParamSvm_{:02d}.pkl').format(numOfExp),
+        'rb'))
+    
+    bestClinicRsfParam = pickle.load(open(
         os.path.join(paramPath,
                      'clinicParamRsf_{:02d}.pkl'.format(numOfExp)),
         'rb'))
-    bestClinicImageParam = pickle.load(open(
+    bestClinicImageRsfParam = pickle.load(open(
         os.path.join(paramPath,
                      'clinicImageParamRsf_{:02d}.pkl').format(numOfExp),
         'rb'))
-       
+    
+    bestClinicGbParam = pickle.load(open(
+        os.path.join(paramPath,
+                     'clinicParamGb_{:02d}.pkl'.format(numOfExp)),
+        'rb'))
+    bestClinicImageGbParam = pickle.load(open(
+        os.path.join(paramPath,
+                     'clinicImageParamGb_{:02d}.pkl').format(numOfExp),
+        'rb'))
     
     results = evaluate_performance(allDataAll,ids,selectedClinic,
                                    selectedImageClinic,
                                    imageNamesAll,
                                    clinicNamesAll,
                                    dataTransform,
-                                   bestClinicParam,
-                                   bestClinicImageParam)
+                                   bestClinicSvmParam,bestClinicRsfParam,bestClinicGbParam,
+                                   bestClinicImageSvmParam,bestClinicImageRsfParam,
+                                   bestClinicImageGbParam)
 
     pickle.dump(results,open(os.path.join(resultPath,
                                            'performance_{:02d}.pkl'.format(numOfExp)),'wb'))

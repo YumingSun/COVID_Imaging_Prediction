@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-Created on Sat Aug 13 15:36:53 2022
+Created on Sat Aug 13 16:08:45 2022
 
 @author: sunym
 """
 import numpy as np
 from sksurv.metrics import integrated_brier_score
-from sklearn.model_selection import GridSearchCV, KFold
-from sklearn.preprocessing import StandardScaler
 import pickle
 import pandas as pd
 import os
@@ -18,33 +16,13 @@ from sksurv.metrics import (
     cumulative_dynamic_auc,
     integrated_brier_score,
 )
-from sksurv.ensemble import RandomSurvivalForest
+from sksurv.ensemble import GradientBoostingSurvivalAnalysis
 from preprocess import clinic_preprocess,image_clinic_preprocess_model_fitting
 
 def evaluate_performance(allData, trainTestId, selectedClinic,
                          selectedImageClinic,
                          imageNameAll,clinicNameAll,
                          transform,clinicParam, clinicImageParam):
-    '''
-    Parameters
-    ----------
-    allData : DataFrame
-    trainTestId : Dict
-        Patient Ids used to split testing and training dataset
-    selectedClinic : List
-    selectedImageClinic : List
-    imageNameAll : List
-    clinicNameAll : List
-    transform : String
-    clinicParam : Dict
-    clinicImageParam : Dict
-
-    Returns
-    -------
-    dict
-        ictionary of C-index for training and testing dataset
-
-    '''
 
     trainId = trainTestId['TrainId']
     testId = trainTestId['TestId']
@@ -76,18 +54,19 @@ def evaluate_performance(allData, trainTestId, selectedClinic,
     outcomeTest = np.core.records.fromarrays(outcomeTest.to_numpy().transpose(),names='Status, Survival_in_days',
                                          formats = 'bool, f8')
     
-    clinicImageRsf = RandomSurvivalForest(**clinicImageParam).fit(trainClinicImage,
+    clinicImageGb = GradientBoostingSurvivalAnalysis(**clinicImageParam).fit(trainClinicImage,
                                                                              outcomeTrain)
-    clinicRsf = RandomSurvivalForest(**clinicParam).fit(trainClinic,
+    clinicGb = GradientBoostingSurvivalAnalysis(**clinicParam).fit(trainClinic,
                                                                              outcomeTrain)
 
-    clinicResTrain = clinicRsf.score(trainClinic,outcomeTrain)
-    clinicResTest = clinicRsf.score(testClinic,outcomeTest)
+    clinicResTrain = clinicGb.score(trainClinic,outcomeTrain)
+    clinicResTest = clinicGb.score(testClinic,outcomeTest)
 
-    clinicImageResTrain = clinicImageRsf.score(trainClinicImage,
+    clinicImageResTrain = clinicImageGb.score(trainClinicImage,
                                                outcomeTrain)
-    clinicImageResTest = clinicImageRsf.score(testClinicImage,
+    clinicImageResTest = clinicImageGb.score(testClinicImage,
                                               outcomeTest)
+        
         
     return {'Clinic Train': clinicResTrain, 'Clinic Test': clinicResTest,
             'Clinic Image Train': clinicImageResTrain, 
@@ -125,11 +104,11 @@ if __name__ == '__main__':
     
     bestClinicParam = pickle.load(open(
         os.path.join(paramPath,
-                     'clinicParamRsf_{:02d}.pkl'.format(numOfExp)),
+                     'clinicParamGb_{:02d}.pkl'.format(numOfExp)),
         'rb'))
     bestClinicImageParam = pickle.load(open(
         os.path.join(paramPath,
-                     'clinicImageParamRsf_{:02d}.pkl').format(numOfExp),
+                     'clinicImageParamGb_{:02d}.pkl').format(numOfExp),
         'rb'))
        
     

@@ -228,5 +228,36 @@ def train_test_preprocess(allData, trainTestId, selectedClinic,
     return (trainClinic,testClinic,trainClinicImage,testClinicImage,
             outcomeTrain,outcomeTest)
 
+def train_test_preprocess_feature_importance(allData, trainTestId, selectedClinic,
+                                             selectedImage,transform):
+
+    trainId = trainTestId['TrainId']
+    testId = trainTestId['TestId']
+
+    trainClinic = allData.loc[trainId,selectedClinic]
+    testClinic = allData.loc[testId,selectedClinic]
+
+    trainImage = allData.loc[trainId,selectedImage]
+    testImage = allData.loc[testId,selectedImage]
+
+    trainClinic  = clinic_preprocess(trainClinic)
+    testClinic  = clinic_preprocess(testClinic)
+
+    trainImage  = image_preprocess(trainImage,transform)
+    testImage  = image_preprocess(testImage,transform)
+
+
+    outcomeTrain = allData.loc[trainId,['Event_Hosp_to_Death', 'Time_Hosp_to_Death']]
+    outcomeTest = allData.loc[testId,['Event_Hosp_to_Death', 'Time_Hosp_to_Death']]
+
+    outcomeTrain = np.core.records.fromarrays(outcomeTrain.to_numpy().transpose(),names='Status, Survival_in_days',
+                                         formats = 'bool, f8')
+    outcomeTest = np.core.records.fromarrays(outcomeTest.to_numpy().transpose(),names='Status, Survival_in_days',
+                                         formats = 'bool, f8')
+
+    return (trainClinic,testClinic,trainImage,testImage,
+            outcomeTrain,outcomeTest)
+
+
 if __name__ == '__main__':
     pass

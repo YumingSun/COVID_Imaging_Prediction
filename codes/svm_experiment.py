@@ -120,8 +120,14 @@ if __name__ == '__main__':
 
     selectedClinic = [f for f in selectedImageClinic if f in clinicNamesAll]
     
-    bestClinicParam = pickle.load(open(os.path.join(paramPath,'clinicParamSvm.pkl'),'rb'))
-    bestClinicImageParam = pickle.load(open(os.path.join(paramPath,'clinicImageParamSvm.pkl'),'rb'))
+    bestClinicParam = pickle.load(open(
+        os.path.join(paramPath,
+                     'clinicParamSvm_{:02d}.pkl'.format(numOfExp)),
+        'rb'))
+    bestClinicImageParam = pickle.load(open(
+        os.path.join(paramPath,
+                     'clinicImageParamSvm_{:02d}.pkl').format(numOfExp),
+        'rb'))
         
     results = evaluate_performance(allDataAll,ids,selectedClinic,
                                    selectedImageClinic,
