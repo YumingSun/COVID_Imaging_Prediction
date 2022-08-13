@@ -8,99 +8,22 @@ import os
 from sksurv.linear_model import CoxPHSurvivalAnalysis
 import pickle
 import sys
-from sklearn.preprocessing import StandardScaler
 import numpy as np
-from scipy.stats import boxcox
 import pandas as pd
+from preprocess import clinic_preprocess,image_clinic_preprocess_feature_selection
 
-def log_transform(X):
-    negId = X.columns[X.min() <= 0]
-    X.loc[:,negId] = X.loc[:,negId] - X.loc[:,negId].min() + 1
-    return np.log(X)
-
-def square_root_transform(X):
-    negId = X.columns[X.min() <= 0]
-    X.loc[:,negId] = X.loc[:,negId] - X.loc[:,negId].min() + 1
-    return np.sqrt(X)
-
-def box_cox(x):
-    return boxcox(x)[0]
-
-def box_cox_transform(X):
-    negId = X.columns[X.min() <= 0]
-    X.loc[:,negId] = X.loc[:,negId] - X.loc[:,negId].min() + 1
-    return X.apply(box_cox,axis = 0)
-
-def clinic_preprocess(clinic):
+def delete_bad_variables(data):
     '''
-
     Parameters
     ----------
-    clinic : DataFrame
-        Clinic data
+    data : DataFrame
 
     Returns
     -------
-    clinic : DataFrame
-        Fill na values with mean and normalize data
+    data : DataFrame
+        Delete variables contains infinity or na and highly skewed variables
 
     '''
-    ctsAll = ['Age','BMI_mean','SpO2','Temperature',
-                  'RespiratoryRate','BPMeanNonInvasive',
-                  'BPDiaNonInvasive','BPSysNonInvasive',
-                  'HeartRate','affluence13_17_qrtl',
-                  'disadvantage13_17_qrtl',
-                  'ethnicimmigrant13_17_qrtl',
-                  'ped1_13_17_qrtl','TotalScore']
-    
-    allFeatures = clinic.columns.values.tolist()
-    
-    clinic = clinic.fillna(clinic.mean(axis = 0))
-    ctsClinicIndex = [i for i in allFeatures if i in ctsAll]
-    if len(ctsClinicIndex) > 0:
-        ctsClinic = clinic[ctsClinicIndex]
-        
-        scaler = StandardScaler().fit(ctsClinic.to_numpy())
-        ctsClinicScaled = scaler.transform(ctsClinic.to_numpy())
-        
-        clinic[ctsClinicIndex] = ctsClinicScaled
-    
-    return clinic
-
-def image_preprocess(image, imageTransform = None):
-    if imageTransform is not None:
-        if imageTransform == 'Standardize':
-            scaler = StandardScaler().fit(image.to_numpy())
-            imageScaled = scaler.transform(image.to_numpy())
-            imageScaled = pd.DataFrame(imageScaled,index = image.index,
-                                              columns = image.columns)
-        elif imageTransform == 'LogTransform':
-            imageScaled = log_transform(image)
-        elif imageTransform == 'SquareRootTransform':
-            imageScaled = square_root_transform(image)
-        else:
-            imageScaled = box_cox_transform(image)
-    else:
-        imageScaled = image
-
-    return imageScaled
-
-def image_clinic_preprocess(data, imageFeature, clinicFeature,
-                            transform):
-    
-    image = data.loc[:,imageFeature]
-    clinic = data.loc[:,clinicFeature]
-    
-    image = image_preprocess(image,transform)
-    clinic = clinic_preprocess(clinic)
-    
-    output = clinic.merge(image,left_index = True, right_index = True)
-    
-    return output
-
-
-
-def delete_bad_variables(data):
     # delete variables that are same for all patients
     data = data.loc[:,(data != data.iloc[0]).any()] 
     # delete variables that are infinity and na
@@ -189,7 +112,7 @@ if __name__ == '__main__':
     imageClinicPath = ''
     dataPath = ''
     
-    allData =  pd.read_csv('')
+    allData =  pd.read_csv(os.path.join(dataPath,'data.csv'))
     
     imageNames = pickle.load(open(os.path.join(dataPath,'imageFeatureNames.pkl'),'rb'))
     clinicNames = pickle.load(open(os.path.join(dataPath,'clinicFeatureNames.pkl'),'rb'))
@@ -202,8 +125,9 @@ if __name__ == '__main__':
                                      right_index = True)
     
     clinic = clinic_preprocess(clinicSub)
-    clinicImage = image_clinic_preprocess(clinicImageSub,imageNames,clinicNames,
-                                          dataTransform)
+    clinicImage = image_clinic_preprocess_feature_selection(clinicImageSub,
+                                                            imageNames,clinicNames,
+                                                            dataTransform)
     
     clinic = delete_bad_variables(clinic)
     clinicImage = delete_bad_variables(clinicImage)
@@ -216,9 +140,9 @@ if __name__ == '__main__':
     
     pickle.dump(clinicLowCor.columns.tolist(),
                 open(os.path.join(clinicPath,
-                                  ''),
+                                  'lowCorClinic.pkl'),
                      'wb'))
     pickle.dump(clinicImageCor.columns.tolist(),
                 open(os.path.join(imageClinicPath,
-                                  ''),
+                                  'lowCorImageClinic.pkl'),
                      'wb'))

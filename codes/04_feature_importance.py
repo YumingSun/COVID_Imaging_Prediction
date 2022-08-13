@@ -20,11 +20,10 @@ from sksurv.metrics import (
 )
 from sksurv.ensemble import RandomSurvivalForest
 from sksurv.svm import FastKernelSurvivalSVM
-from scipy.stats import boxcox
 from sksurv.ensemble import GradientBoostingSurvivalAnalysis
 import eli5
 from eli5.sklearn import PermutationImportance
-
+from preprocess import train_test_preprocess
 class Ensemble:
     def __init__(self,svmParam={},rsfParam={},gbParam={}):
         self.svmParam = svmParam
@@ -85,132 +84,6 @@ class Ensemble:
         y_time = y['Survival_in_days']
         c = concordance_index_censored(y_event,y_time,y_pred)[0]
         return c
-
-
-def log_transform(X):
-    negId = X.columns[X.min() <= 0]
-    X.loc[:,negId] = X.loc[:,negId] - X.loc[:,negId].min() + 1
-    return np.log(X)
-
-def square_root_transform(X):
-    negId = X.columns[X.min() <= 0]
-    X.loc[:,negId] = X.loc[:,negId] - X.loc[:,negId].min() + 1
-    return np.sqrt(X)
-
-def box_cox(x):
-    return boxcox(x)[0]
-
-def box_cox_transform(X):
-    negId = X.columns[X.min() <= 0]
-    X.loc[:,negId] = X.loc[:,negId] - X.loc[:,negId].min() + 1
-    return X.apply(box_cox,axis = 0)
-
-def image_preprocess(image, imageTransform = None):
-    if imageTransform is not None:
-        if imageTransform == 'Standardize':
-            scaler = StandardScaler().fit(image.to_numpy())
-            imageScaled = scaler.transform(image.to_numpy())
-            imageScaled = pd.DataFrame(imageScaled,index = image.index,
-                                              columns = image.columns)
-        elif imageTransform == 'LogTransform':
-            imageScaled = log_transform(image)
-        elif imageTransform == 'SquareRootTransform':
-            imageScaled = square_root_transform(image)
-        else:
-            imageScaled = box_cox_transform(image)
-    else:
-        imageScaled = image
-        
-    return imageScaled
-
-def clinic_preprocess(clinic):
-    ctsAll = ['Age','BMI_mean','SpO2','Temperature',
-                  'RespiratoryRate','BPMeanNonInvasive',
-                  'BPDiaNonInvasive','BPSysNonInvasive',
-                  'HeartRate','affluence13_17_qrtl',
-                  'disadvantage13_17_qrtl',
-                  'ethnicimmigrant13_17_qrtl',
-                  'ped1_13_17_qrtl','TotalScore']
-
-    allFeatures = clinic.columns.values.tolist()
-
-    clinic = clinic.fillna(clinic.mean(axis = 0))
-    ctsClinicIndex = [i for i in allFeatures if i in ctsAll]
-    if len(ctsClinicIndex) > 1:
-        ctsClinic = clinic[ctsClinicIndex]
-
-        scaler = StandardScaler().fit(ctsClinic.to_numpy())
-        ctsClinicScaled = scaler.transform(ctsClinic.to_numpy())
-
-        clinic[ctsClinicIndex] = ctsClinicScaled
-
-    return clinic
-
-def image_clinic_preprocess(data, selectedFea, imageNameAll, clinicNameAll,
-                            transform,deleteSkew  = True):
-    selectedImage = [fea for fea in selectedFea if fea in imageNameAll]
-    selectedClinic = [fea for fea in selectedFea if fea in clinicNameAll]
-
-    image = read_feature(data,selectedImage,transform,deleteSkew)
-    clinic = data.loc[:, selectedClinic]
-    clinic  = clinic_preprocess(clinic)
-
-    clinicImage = image.join(clinic)
-
-    return clinicImage,clinicImage.columns.tolist()
-
-def read_feature(data, selectedFeature,varTransform,deleteSkew = True):
-    dataSub = data.loc[:,selectedFeature]
-    if deleteSkew:
-        unskewFeatures = dataSub.columns[dataSub.skew().abs() < 10]
-        dataSub = dataSub.loc[:,unskewFeatures]
-    dataSub = image_preprocess(dataSub,varTransform)
-    return dataSub
-    cvRes = pickle.load(open(
-        os.path.join(resLoc,var + '_0718',
-                     'cv_{}_Exp{:02d}_0718.pkl'.format(var,numOfExp)),
-        'rb'))
-    bestParam = cvRes.loc[cvRes.rank_test_score == 1,'params'].values[0]
-    bestParam['random_state'] = 0
-    return bestParam
-
-def train_test_preprocess(allData, trainTestId, selectedClinic,
-                         selectedImageClinic,
-                         imageNameAll,clinicNameAll,
-                         transform):
-
-    trainId = trainTestId['TrainId']
-    testId = trainTestId['TestId']
-
-
-    trainClinicImage = allData.loc[trainId,selectedImageClinic]
-    testClinicImage = allData.loc[testId,selectedImageClinic]
-
-    trainClinic = allData.loc[trainId,selectedClinic]
-    testClinic = allData.loc[testId,selectedClinic]
-
-
-    trainClinic  = clinic_preprocess(trainClinic)
-    testClinic  = clinic_preprocess(testClinic)
-
-    trainClinicImage,trainClinicImageNames = image_clinic_preprocess(
-        trainClinicImage,selectedImageClinic,imageNameAll, clinicNameAll,
-        transform,deleteSkew=False)
-    testClinicImage,_ = image_clinic_preprocess(testClinicImage,
-                                          trainClinicImageNames,
-                                          imageNameAll, clinicNameAll,
-                                          transform,deleteSkew=False)
-
-    outcomeTrain = allData.loc[trainId,['Event_Hosp_to_Death', 'Time_Hosp_to_Death']]
-    outcomeTest = allData.loc[testId,['Event_Hosp_to_Death', 'Time_Hosp_to_Death']]
-    
-    outcomeTrain = np.core.records.fromarrays(outcomeTrain.to_numpy().transpose(),names='Status, Survival_in_days',
-                                         formats = 'bool, f8')
-    outcomeTest = np.core.records.fromarrays(outcomeTest.to_numpy().transpose(),names='Status, Survival_in_days',
-                                         formats = 'bool, f8')
-    
-    return (trainClinic,testClinic,trainClinicImage,testClinicImage,
-            outcomeTrain,outcomeTest)
 
 
 def get_feature_importance(model,x_train,x_test,y_train,y_test,niter,bestParam):
@@ -286,9 +159,6 @@ def get_ensemble_feature_importance(model,x_train,x_test,y_train,y_test,niter,
     return featureImportance
 
 
-
-
-
 if __name__ == '__main__':
     numOfExp = int(sys.argv[1])
     dataTransform = sys.argv[2]
@@ -303,21 +173,25 @@ if __name__ == '__main__':
 
     resultPath = ''
     
+    paramPath = ''
     
-    allDataAll =  pd.read_csv('')
+    
+    allDataAll = pd.read_csv(os.path.join(dataPath,'data.csv'))
 
-    imageNamesAll = pickle.load(open('','rb'))
-    clinicNamesAll = pickle.load(open('','rb'))
+    imageNamesAll = pickle.load(open(os.path.join(dataPath,'imageFeatureNames.pkl'),'rb'))
+    clinicNamesAll = pickle.load(open(os.path.join(dataPath,'clinicFeatureNames.pkl'),'rb'))
+    
     
     ids = pickle.load(open(os.path.join(dataSplitPath,'train_test_{:02d}.pkl'.format(numOfExp)),'rb'))
     
     
     selectedImageClinic = pickle.load(open(os.path.join(selectedClinicImagePath,
-                                                  ''),
+                                                  'selectedImageClinic.pkl'),
                                            'rb'))
-    selectedClinic = pickle.load(open(os.path.join(selectedClinicPath,
-                                                  ''),
-                                      'rb'))
+
+    selectedClinic = [f for f in selectedImageClinic if f in clinicNamesAll]
+    selectedImage = [f for f in selectedImageClinic if f in imageNamesAll]
+
 
     
     (trainClinic,testClinic,trainClinicImage,
@@ -327,26 +201,26 @@ if __name__ == '__main__':
                               clinicNamesAll,dataTransform)
     
     if model == 'svm':
-        bestClinicParam = pickle.load(open('','rb'))
-        bestClinicImageParam = pickle.load(open('','rb'))
+        bestClinicParam = pickle.load(open(os.path.join(paramPath,'clinicParamSvm.pkl'),'rb'))
+        bestClinicImageParam = pickle.load(open(os.path.join(paramPath,'clinicImageParamSvm.pkl'),'rb'))
     elif model == 'cox':
-        bestClinicParam = pickle.load(open('','rb'))
-        bestClinicImageParam = pickle.load(open('','rb'))
+        bestClinicParam = None
+        bestClinicImageParam = None
     elif model == 'randomForest':
-        bestClinicParam = pickle.load(open('','rb'))
-        bestClinicImageParam = pickle.load(open('','rb'))
+        bestClinicParam = pickle.load(open(os.path.join(paramPath,'clinicParamRsf.pkl'),'rb'))
+        bestClinicImageParam = pickle.load(open(os.path.join(paramPath,'clinicImageParamRsf.pkl'),'rb'))
     elif model == 'gradientBoosting':
-        bestClinicParam = pickle.load(open('','rb'))
-        bestClinicImageParam = pickle.load(open('','rb'))
+        bestClinicParam = pickle.load(open(os.path.join(paramPath,'clinicParamGb.pkl'),'rb'))
+        bestClinicImageParam = pickle.load(open(os.path.join(paramPath,'clinicImageParamGb.pkl'),'rb'))
     elif model == 'Ensemble':
-        bestClinicParamSvm = pickle.load(open('','rb'))
-        bestClinicImageParamSvm = pickle.load(open('','rb'))
+        bestClinicParamSvm = pickle.load(open(os.path.join(paramPath,'clinicParamSvm.pkl'),'rb'))
+        bestClinicImageParamSvm = pickle.load(open(os.path.join(paramPath,'clinicImageParamSvm.pkl'),'rb'))
         
-        bestClinicParamRsf = pickle.load(open('','rb'))
-        bestClinicImageParamRsf = pickle.load(open('','rb'))
+        bestClinicParamRsf = pickle.load(open(os.path.join(paramPath,'clinicParamRsf.pkl'),'rb'))
+        bestClinicImageParamRsf = pickle.load(open(os.path.join(paramPath,'clinicImageParamRsf.pkl'),'rb'))
         
-        bestClinicParamGb = pickle.load(open('','rb'))
-        bestClinicImageParamGb = pickle.load(open('','rb'))
+        bestClinicParamGb = pickle.load(open(os.path.join(paramPath,'clinicParamGb.pkl'),'rb'))
+        bestClinicImageParamGb = pickle.load(open(os.path.join(paramPath,'clinicImageParamGb.pkl'),'rb'))
 
     if model == 'Ensemble':
         fi = get_ensemble_feature_importance(model,trainClinicImage,testClinicImage,
