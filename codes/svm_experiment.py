@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Created on Sat Aug 13 00:00:36 2022
+Created on Sat Aug 13 11:09:48 2022
 
 @author: sunym
 """
-from sksurv.linear_model import CoxPHSurvivalAnalysis
 import numpy as np
 from sksurv.metrics import integrated_brier_score
 import pickle
@@ -17,12 +16,14 @@ from sksurv.metrics import (
     cumulative_dynamic_auc,
     integrated_brier_score,
 )
+from sksurv.svm import FastKernelSurvivalSVM
+
 from preprocess import clinic_preprocess,image_clinic_preprocess_model_fitting
 
 def evaluate_performance(allData, trainTestId, selectedClinic,
                          selectedImageClinic,
                          imageNameAll,clinicNameAll,
-                         transform):
+                         transform,clinicParam, clinicImageParam):
     '''
     Parameters
     ----------
@@ -34,13 +35,15 @@ def evaluate_performance(allData, trainTestId, selectedClinic,
     imageNameAll : List
     clinicNameAll : List
     transform : String
+    clinicParam : Dict
+    clinicImageParam : Dict
 
     Returns
     -------
-    Dictionary of C-index
+    dict
+        Dictionary of C-index for training and testing dataset
 
     '''
-
     trainId = trainTestId['TrainId']
     testId = trainTestId['TestId']
     
@@ -70,26 +73,23 @@ def evaluate_performance(allData, trainTestId, selectedClinic,
                                          formats = 'bool, f8')
     outcomeTest = np.core.records.fromarrays(outcomeTest.to_numpy().transpose(),names='Status, Survival_in_days',
                                          formats = 'bool, f8')
+    clinicImageSsvm = FastKernelSurvivalSVM(**clinicImageParam).fit(trainClinicImage,
+                                                                      outcomeTrain)
+    clinicSsvm = FastKernelSurvivalSVM(**clinicParam).fit(trainClinic,
+                                                                      outcomeTrain)
     
-    clinicImageCox = CoxPHSurvivalAnalysis(n_iter = 200).fit(trainClinicImage, 
-                                               outcomeTrain)
-    clinicCox = CoxPHSurvivalAnalysis(n_iter = 200).fit(trainClinic, 
-                                               outcomeTrain)
-
-    clinicResTrain = clinicCox.score(trainClinic,outcomeTrain)
-    clinicResTest = clinicCox.score(testClinic,outcomeTest)
+    clinicResTrain = clinicSsvm.score(trainClinic,outcomeTrain)
+    clinicResTest = clinicSsvm.score(testClinic,outcomeTest)
     
-    clinicImageResTrain = clinicImageCox.score(trainClinicImage,
+    clinicImageResTrain = clinicImageSsvm.score(trainClinicImage,
                                                outcomeTrain)
-    clinicImageResTest = clinicImageCox.score(testClinicImage,
+    clinicImageResTest = clinicImageSsvm.score(testClinicImage,
                                               outcomeTest)
     
-        
     return {'Clinic Train': clinicResTrain, 'Clinic Test': clinicResTest,
             'Clinic Image Train': clinicImageResTrain, 
             'Clinic Image Test': clinicImageResTest
             }
-
 
 if __name__ == '__main__':
     numOfExp = int(sys.argv[1])
@@ -101,13 +101,14 @@ if __name__ == '__main__':
     selectedClinicImagePath = ''
     selectedClinicPath = ''
 
-    
+    paramPath = ''
     resultPath = ''
+    
     allDataAll =  pd.read_csv(os.path.join(dataPath,'data.csv'),
                            index_col = ['PatientID'])
     
     ids = pickle.load(open(os.path.join(dataSplitPath,'train_test_{:02d}.pkl'.format(numOfExp)),'rb'))
-
+   
     selectedImageClinic = pickle.load(open(os.path.join(selectedClinicImagePath,
                                                   'selectImageClinic.pkl'),
                                            'rb'))
@@ -116,14 +117,19 @@ if __name__ == '__main__':
                                                'imageFeatureNames.pkl'),'rb'))
     clinicNamesAll = pickle.load(open(os.path.join(dataPath,
                                                    'clinicFeatureNames.pkl'),'rb'))
-    
+
     selectedClinic = [f for f in selectedImageClinic if f in clinicNamesAll]
     
+    bestClinicParam = pickle.load(open(os.path.join(paramPath,'clinicParamSvm.pkl'),'rb'))
+    bestClinicImageParam = pickle.load(open(os.path.join(paramPath,'clinicImageParamSvm.pkl'),'rb'))
+        
     results = evaluate_performance(allDataAll,ids,selectedClinic,
                                    selectedImageClinic,
                                    imageNamesAll,
                                    clinicNamesAll,
-                                   dataTransform)
-    
+                                   dataTransform,
+                                   bestClinicParam,
+                                   bestClinicImageParam)
+
     pickle.dump(results,open(os.path.join(resultPath,
                                            'performance_{:02d}.pkl'.format(numOfExp)),'wb'))
