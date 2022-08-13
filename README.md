@@ -17,4 +17,4 @@ As portable chest X-rays are an efficient means of triaging emergent cases, thei
 Requirements
 ============
 
-The project has been tested on Python 3.7.4 with `Tensorflow == 2.0.0`, `Scikit-learn == 0.20.2` , `Pandas == 0.24.1` and `Numpy == 1.17.4`.
+The project has been tested on Python 3.8.8 with `Scikit-learn == 0.17.2` , `Pandas == 1.3.4` and `Numpy == 1.20.1`.
