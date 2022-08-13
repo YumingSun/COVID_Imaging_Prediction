@@ -232,7 +232,7 @@ if __name__ == '__main__':
         fi = get_feature_importance(model,trainClinicImage,testClinicImage,
                                outcomeTrain,OutcomeTest,20,bestClinicImageParam)
         
-    pickle.dump(fi, open(os.path.join(resultPath,''),'wb'))
+    pickle.dump(fi, open(os.path.join(resultPath,'results.pkl'),'wb'))
     
     
 
