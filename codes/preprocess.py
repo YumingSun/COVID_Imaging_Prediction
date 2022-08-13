@@ -228,3 +228,5 @@ def train_test_preprocess(allData, trainTestId, selectedClinic,
     return (trainClinic,testClinic,trainClinicImage,testClinicImage,
             outcomeTrain,outcomeTest)
 
+if __name__ == '__main__':
+    pass
